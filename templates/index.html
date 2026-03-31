@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f0f11;
+    --surface: #18181c;
+    --surface2: #222228;
+    --border: #2e2e38;
+    --accent: #e8d5a3;
+    --accent2: #7c9bb5;
+    --text: #e8e8ec;
+    --text-dim: #888896;
+    --white-mask: rgba(255,255,255,0.92);
+    --radius: 8px;
+    --toolbar-h: 64px;
+    --tabs-h: 48px;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── TOOLBAR ── */
+  #toolbar {
+    height: var(--toolbar-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+    flex-shrink: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-size: 20px;
+    color: var(--accent);
+    letter-spacing: -0.5px;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .divider {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .tool-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    transition: all 0.15s;
+    white-space: nowrap;
+    position: relative;
+  }
+  .tool-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .tool-btn.active {
+    background: var(--accent);
+    color: #0f0f11;
+    border-color: var(--accent);
+    font-weight: 500;
+  }
+  .tool-btn svg { width: 15px; height: 15px; }
+
+  #upload-btn {
+    background: var(--accent2);
+    border-color: var(--accent2);
+    color: #0f0f11;
+  }
+  #upload-btn:hover { opacity: 0.85; }
+
+  #save-btn {
+    background: #4a9e6e;
+    border-color: #4a9e6e;
+    color: white;
+    margin-left: auto;
+  }
+  #save-btn:hover { opacity: 0.85; }
+  #save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Text controls */
+  #text-controls {
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  #text-controls.visible { display: flex; }
+
+  #font-size-input {
+    width: 56px;
+    padding: 6px 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  #text-color-input {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    cursor: pointer;
+    padding: 2px;
+    background: transparent;
+  }
+
+  label.ctrl-label {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  /* Undo button */
+  #undo-btn { margin-left: 4px; }
+
+  /* ── PAGE TABS ── */
+  #tabs-bar {
+    height: var(--tabs-h);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    padding: 0 16px;
+    gap: 4px;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  #tabs-bar::-webkit-scrollbar { height: 3px; }
+  #tabs-bar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .page-tab {
+    padding: 8px 18px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-dim);
+    background: transparent;
+    font-family: 'DM Mono', monospace;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .page-tab:hover { color: var(--text); border-color: var(--border); }
+  .page-tab.active {
+    background: var(--bg);
+    border-color: var(--border);
+    color: var(--accent);
+    font-weight: 500;
+  }
+
+  /* ── MAIN AREA ── */
+  #main {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  #canvas-container {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px;
+    background: var(--bg);
+  }
+
+  #canvas-wrapper {
+    position: relative;
+    display: inline-block;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    border-radius: 2px;
+  }
+
+  /* PDF rendered image (background) */
+  #pdf-image {
+    display: block;
+    max-width: 100%;
+  }
+
+  /* Drawing canvas (overlaid on image) */
+  #draw-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    cursor: crosshair;
+  }
+
+  /* Text elements overlaid */
+  .text-overlay {
+    position: absolute;
+    cursor: move;
+    user-select: none;
+    white-space: nowrap;
+    font-family: 'DM Mono', monospace;
+    line-height: 1;
+    border: 1px dashed transparent;
+    padding: 2px 4px;
+    border-radius: 2px;
+    min-width: 20px;
+  }
+  .text-overlay:hover, .text-overlay.selected {
+    border-color: var(--accent2);
+  }
+  .text-overlay .delete-text {
+    display: none;
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 18px;
+    height: 18px;
+    background: #e05555;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    line-height: 1;
+  }
+  .text-overlay:hover .delete-text,
+  .text-overlay.selected .delete-text { display: flex; }
+
+  /* ── WELCOME STATE ── */
+  #welcome {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  #welcome h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 32px;
+    color: var(--accent);
+    font-weight: 300;
+  }
+  #welcome p { color: var(--text-dim); font-size: 13px; }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    padding: 48px 64px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(232,213,163,0.04);
+  }
+  .drop-zone svg { color: var(--accent2); opacity: 0.8; }
+
+  /* ── LOADING ── */
+  #loading {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,15,17,0.75);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #loading.show { display: flex; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── TOAST ── */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 24px;
+    font-size: 13px;
+    color: var(--text);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 1000;
+    white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.success { border-color: #4a9e6e; color: #6ecf96; }
+  #toast.error { border-color: #e05555; color: #f07070; }
+
+  /* ── MASK ELEMENTS on canvas-wrapper ── */
+  .mask-element {
+    position: absolute;
+    background: white;
+    border: 1px solid rgba(200,200,200,0.3);
+    cursor: move;
+    pointer-events: all;
+  }
+  .mask-element .delete-mask {
+    display: none;
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 18px;
+    height: 18px;
+    background: #e05555;
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 10;
+    line-height: 1;
+  }
+  .mask-element:hover .delete-mask { display: flex; }
+  .mask-element .resize-handle {
+    display: none;
+    position: absolute;
+    bottom: -5px;
+    right: -5px;
+    width: 10px;
+    height: 10px;
+    background: var(--accent2);
+    border-radius: 2px;
+    cursor: se-resize;
+  }
+  .mask-element:hover .resize-handle { display: block; }
+
+  #file-input { display: none; }
+
+  /* mode indicator */
+  #mode-indicator {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 16px;
+    font-size: 11px;
+    color: var(--text-dim);
+    pointer-events: none;
+    z-index: 200;
+  }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <span style="font-size:13px;color:var(--text-dim)" id="loading-msg">Processing...</span>
+</div>
+
+<!-- Toast notification -->
+<div id="toast"></div>
+
+<!-- Mode indicator -->
+<div id="mode-indicator">Mode: <span id="mode-text">Select a tool</span></div>
+
+<!-- Hidden file input -->
+<input type="file" id="file-input" accept=".pdf">
+
+<!-- ── TOOLBAR ── -->
+<div id="toolbar">
+  <span class="logo">✦ PDF Editor</span>
+  <div class="divider"></div>
+
+  <button class="tool-btn" id="upload-btn" onclick="document.getElementById('file-input').click()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+    Open PDF
+  </button>
+
+  <div class="divider"></div>
+
+  <button class="tool-btn" id="btn-select" title="Select / Move existing elements" onclick="setTool('select')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3l14 9-7 1-3 6z"/></svg>
+    Select
+  </button>
+
+  <button class="tool-btn" id="btn-mask" title="Draw white mask rectangle" onclick="setTool('mask')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+    White Mask
+  </button>
+
+  <button class="tool-btn" id="btn-text" title="Add draggable text" onclick="setTool('text')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+    Add Text
+  </button>
+
+  <div id="text-controls">
+    <label class="ctrl-label">Size:</label>
+    <input type="number" id="font-size-input" value="16" min="6" max="120">
+    <label class="ctrl-label">Color:</label>
+    <input type="color" id="text-color-input" value="#000000">
+  </div>
+
+  <div class="divider"></div>
+
+  <button class="tool-btn" id="undo-btn" title="Undo last action (Ctrl+Z)" onclick="undo()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 00-4-4H4"/></svg>
+    Undo
+  </button>
+
+  <button class="tool-btn" id="save-btn" disabled onclick="savePDF()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+    Save PDF
+  </button>
+</div>
+
+<!-- ── PAGE TABS ── -->
+<div id="tabs-bar"></div>
+
+<!-- ── MAIN AREA ── -->
+<div id="main">
+  <!-- Welcome / drop zone -->
+  <div id="welcome">
+    <h2>PDF Editor</h2>
+    <p>Open a PDF to start editing — mask content, add text, and export cleanly.</p>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/>
+        <line x1="9" y1="15" x2="15" y2="15"/>
+      </svg>
+      <span style="color:var(--text-dim);font-size:13px">Click or drag & drop a PDF here</span>
+    </div>
+  </div>
+
+  <!-- Canvas container (hidden until PDF loaded) -->
+  <div id="canvas-container" style="display:none">
+    <div id="canvas-wrapper">
+      <img id="pdf-image" alt="PDF Page">
+      <canvas id="draw-canvas"></canvas>
+      <!-- Mask and text elements are appended here dynamically -->
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════
+let state = {
+  tool: 'select',         // 'select' | 'mask' | 'text'
+  pageCount: 0,
+  currentPage: 0,
+  renderInfo: {},         // {pageNum: {width, height, original_width, original_height, zoom}}
+  // Edits per page: {pageNum: [{type:'mask'|'text', ...}]}
+  edits: {},
+  // DOM elements per page
+  domElements: {},        // {pageNum: [el, el, ...]}
+  history: [],            // for undo
+  pdfLoaded: false,
+};
+
+// Drawing state
+let drawing = {
+  active: false,
+  startX: 0, startY: 0,
+  rect: null,             // temp div shown while dragging
+};
+
+// ══════════════════════════════════════════════
+//  TOOL MANAGEMENT
+// ══════════════════════════════════════════════
+function setTool(tool) {
+  state.tool = tool;
+  ['select', 'mask', 'text'].forEach(t => {
+    document.getElementById('btn-' + t).classList.toggle('active', t === tool);
+  });
+  const tc = document.getElementById('text-controls');
+  tc.classList.toggle('visible', tool === 'text');
+
+  const modeText = {select:'Select & Move', mask:'Draw White Mask', text:'Click to Add Text'};
+  document.getElementById('mode-text').textContent = modeText[tool];
+
+  const canvas = document.getElementById('draw-canvas');
+  canvas.style.cursor = tool === 'select' ? 'default' : tool === 'mask' ? 'crosshair' : 'text';
+}
+
+// ══════════════════════════════════════════════
+//  FILE UPLOAD
+// ══════════════════════════════════════════════
+document.getElementById('file-input').addEventListener('change', function(e) {
+  if (e.target.files[0]) uploadPDF(e.target.files[0]);
+});
+
+// Drag and drop
+const dropZone = document.getElementById('drop-zone');
+document.body.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+document.body.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file && file.name.endsWith('.pdf')) uploadPDF(file);
+  else showToast('Please drop a PDF file', 'error');
+});
+
+async function uploadPDF(file) {
+  showLoading('Uploading PDF...');
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); hideLoading(); return; }
+
+    // Reset state
+    state.pageCount = data.page_count;
+    state.currentPage = 0;
+    state.edits = {};
+    state.domElements = {};
+    state.renderInfo = {};
+    state.history = [];
+    state.pdfLoaded = true;
+
+    buildTabs();
+    document.getElementById('welcome').style.display = 'none';
+    document.getElementById('canvas-container').style.display = 'flex';
+    document.getElementById('save-btn').disabled = false;
+    setTool('mask');
+
+    await renderPage(0);
+    hideLoading();
+    showToast(`Loaded ${data.page_count} page${data.page_count > 1 ? 's' : ''}`, 'success');
+  } catch(err) {
+    showToast('Upload failed: ' + err.message, 'error');
+    hideLoading();
+  }
+}
+
+// ══════════════════════════════════════════════
+//  TABS
+// ══════════════════════════════════════════════
+function buildTabs() {
+  const bar = document.getElementById('tabs-bar');
+  bar.innerHTML = '';
+  for (let i = 0; i < state.pageCount; i++) {
+    const tab = document.createElement('button');
+    tab.className = 'page-tab' + (i === 0 ? ' active' : '');
+    tab.textContent = `Page ${i + 1}`;
+    tab.onclick = () => switchPage(i);
+    bar.appendChild(tab);
+  }
+}
+
+async function switchPage(pageNum) {
+  if (pageNum === state.currentPage) return;
+
+  // Save current DOM elements (they're already tracked in state.domElements)
+  const tabs = document.querySelectorAll('.page-tab');
+  tabs.forEach((t, i) => t.classList.toggle('active', i === pageNum));
+
+  state.currentPage = pageNum;
+  await renderPage(pageNum);
+}
+
+// ══════════════════════════════════════════════
+//  RENDER PAGE
+// ══════════════════════════════════════════════
+async function renderPage(pageNum) {
+  showLoading(`Rendering page ${pageNum + 1}...`);
+  const wrapper = document.getElementById('canvas-wrapper');
+
+  // Remove existing overlays
+  document.querySelectorAll('.mask-element, .text-overlay').forEach(el => el.remove());
+
+  try {
+    const res = await fetch(`/render_page/${pageNum}`);
+    const data = await res.json();
+    if (data.error) { showToast(data.error, 'error'); hideLoading(); return; }
+
+    // Set image
+    const img = document.getElementById('pdf-image');
+    img.src = 'data:image/png;base64,' + data.image;
+    img.width = data.width;
+    img.height = data.height;
+
+    // Size the canvas to match
+    const canvas = document.getElementById('draw-canvas');
+    canvas.width = data.width;
+    canvas.height = data.height;
+    canvas.style.width = data.width + 'px';
+    canvas.style.height = data.height + 'px';
+
+    // Store render info
+    state.renderInfo[pageNum] = {
+      width: data.width,
+      height: data.height,
+      original_width: data.original_width,
+      original_height: data.original_height,
+      zoom: data.zoom
+    };
+
+    // Re-render existing edits for this page
+    const pageEdits = state.edits[pageNum] || [];
+    state.domElements[pageNum] = [];
+    pageEdits.forEach(edit => renderEditElement(edit, pageNum));
+
+    hideLoading();
+  } catch(err) {
+    showToast('Render failed: ' + err.message, 'error');
+    hideLoading();
+  }
+}
+
+// ══════════════════════════════════════════════
+//  CANVAS DRAWING (MASK TOOL)
+// ══════════════════════════════════════════════
+const canvas = document.getElementById('draw-canvas');
+
+canvas.addEventListener('mousedown', onMouseDown);
+canvas.addEventListener('mousemove', onMouseMove);
+canvas.addEventListener('mouseup', onMouseUp);
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+function onMouseDown(e) {
+  if (!state.pdfLoaded) return;
+
+  if (state.tool === 'mask') {
+    drawing.active = true;
+    const pos = getCanvasPos(e);
+    drawing.startX = pos.x;
+    drawing.startY = pos.y;
+
+    // Create a temporary visual rect
+    const tempRect = document.createElement('div');
+    tempRect.style.cssText = `
+      position:absolute;
+      border: 2px dashed rgba(232,213,163,0.8);
+      background: rgba(232,213,163,0.1);
+      pointer-events:none;
+      z-index:50;
+    `;
+    document.getElementById('canvas-wrapper').appendChild(tempRect);
+    drawing.rect = tempRect;
+
+  } else if (state.tool === 'text') {
+    const pos = getCanvasPos(e);
+    addText(pos.x, pos.y);
+  }
+}
+
+function onMouseMove(e) {
+  if (!drawing.active || state.tool !== 'mask') return;
+  const pos = getCanvasPos(e);
+  const x = Math.min(pos.x, drawing.startX);
+  const y = Math.min(pos.y, drawing.startY);
+  const w = Math.abs(pos.x - drawing.startX);
+  const h = Math.abs(pos.y - drawing.startY);
+
+  // Get display scale
+  const canvasRect = canvas.getBoundingClientRect();
+  const dispScale = canvasRect.width / canvas.width;
+
+  drawing.rect.style.left = (x * dispScale) + 'px';
+  drawing.rect.style.top = (y * dispScale) + 'px';
+  drawing.rect.style.width = (w * dispScale) + 'px';
+  drawing.rect.style.height = (h * dispScale) + 'px';
+}
+
+function onMouseUp(e) {
+  if (!drawing.active || state.tool !== 'mask') return;
+  drawing.active = false;
+
+  const pos = getCanvasPos(e);
+  const x = Math.min(pos.x, drawing.startX);
+  const y = Math.min(pos.y, drawing.startY);
+  const w = Math.abs(pos.x - drawing.startX);
+  const h = Math.abs(pos.y - drawing.startY);
+
+  // Remove temp rect
+  if (drawing.rect) { drawing.rect.remove(); drawing.rect = null; }
+
+  if (w < 5 || h < 5) return; // Too small, ignore
+
+  const edit = { type: 'mask', x, y, width: w, height: h };
+  addEdit(edit);
+}
+
+// ══════════════════════════════════════════════
+//  ADD EDIT + RENDER DOM ELEMENT
+// ══════════════════════════════════════════════
+function addEdit(edit) {
+  const p = state.currentPage;
+  if (!state.edits[p]) state.edits[p] = [];
+  state.edits[p].push(edit);
+
+  // Track for undo
+  state.history.push({ page: p, edit });
+
+  // Render the visual element
+  renderEditElement(edit, p);
+}
+
+function renderEditElement(edit, pageNum) {
+  if (pageNum !== state.currentPage) return; // Only render current page elements
+
+  const wrapper = document.getElementById('canvas-wrapper');
+  const canvasRect = canvas.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const displayScale = canvasRect.width / canvas.width;
+
+  if (edit.type === 'mask') {
+    const el = document.createElement('div');
+    el.className = 'mask-element';
+    el.style.left = (edit.x * displayScale) + 'px';
+    el.style.top = (edit.y * displayScale) + 'px';
+    el.style.width = (edit.width * displayScale) + 'px';
+    el.style.height = (edit.height * displayScale) + 'px';
+
+    // Delete button
+    const del = document.createElement('div');
+    del.className = 'delete-mask';
+    del.innerHTML = '✕';
+    del.onclick = (e) => { e.stopPropagation(); removeEdit(edit, pageNum, el); };
+    el.appendChild(del);
+
+    // Resize handle
+    const rh = document.createElement('div');
+    rh.className = 'resize-handle';
+    makeMaskResizable(el, edit, displayScale, rh);
+    el.appendChild(rh);
+
+    makeDraggable(el, edit, displayScale);
+    wrapper.appendChild(el);
+
+    if (!state.domElements[pageNum]) state.domElements[pageNum] = [];
+    state.domElements[pageNum].push(el);
+
+  } else if (edit.type === 'text') {
+    const el = document.createElement('div');
+    el.className = 'text-overlay';
+    el.contentEditable = true;
+    el.textContent = edit.text;
+    el.style.left = (edit.x * displayScale) + 'px';
+    el.style.top = (edit.y * displayScale) + 'px';
+    el.style.fontSize = (edit.fontSize * displayScale) + 'px';
+    el.style.color = edit.color;
+    el.style.fontFamily = 'Arial, Helvetica, sans-serif';
+    el.style.zIndex = 20;
+
+    // Sync text changes back to edit object
+    el.addEventListener('input', () => { edit.text = el.textContent; });
+    el.addEventListener('focus', () => el.classList.add('selected'));
+    el.addEventListener('blur', () => el.classList.remove('selected'));
+
+    // Delete button
+    const del = document.createElement('div');
+    del.className = 'delete-text';
+    del.innerHTML = '✕';
+    del.contentEditable = false;
+    del.onclick = (e) => { e.stopPropagation(); removeEdit(edit, pageNum, el); };
+    el.appendChild(del);
+
+    makeDraggable(el, edit, displayScale);
+    wrapper.appendChild(el);
+
+    // Focus immediately for typing
+    setTimeout(() => el.focus(), 50);
+
+    if (!state.domElements[pageNum]) state.domElements[pageNum] = [];
+    state.domElements[pageNum].push(el);
+  }
+}
+
+// ══════════════════════════════════════════════
+//  ADD TEXT
+// ══════════════════════════════════════════════
+function addText(x, y) {
+  const fontSize = parseInt(document.getElementById('font-size-input').value) || 16;
+  const color = document.getElementById('text-color-input').value;
+  const edit = { type: 'text', x, y, text: 'Type here', fontSize, color };
+  addEdit(edit);
+}
+
+// ══════════════════════════════════════════════
+//  DRAG LOGIC (for both masks and text)
+// ══════════════════════════════════════════════
+function makeDraggable(el, edit, displayScale) {
+  let isDragging = false;
+  let startMouseX, startMouseY, startElX, startElY;
+
+  const onStart = (e) => {
+    // Don't drag if clicking delete button or resize handle
+    if (e.target.classList.contains('delete-mask') ||
+        e.target.classList.contains('delete-text') ||
+        e.target.classList.contains('resize-handle')) return;
+    // Don't drag text in edit mode (let clicking text focus it)
+    if (el.classList.contains('text-overlay') && e.target === el) {
+      // Allow drag only with ctrl or from border area
+    }
+
+    isDragging = true;
+    startMouseX = e.clientX;
+    startMouseY = e.clientY;
+    startElX = parseFloat(el.style.left);
+    startElY = parseFloat(el.style.top);
+    e.preventDefault();
+  };
+
+  const onMove = (e) => {
+    if (!isDragging) return;
+    const dx = e.clientX - startMouseX;
+    const dy = e.clientY - startMouseY;
+    const newLeft = startElX + dx;
+    const newTop = startElY + dy;
+    el.style.left = newLeft + 'px';
+    el.style.top = newTop + 'px';
+    // Update edit data (in canvas coords)
+    edit.x = newLeft / displayScale;
+    edit.y = newTop / displayScale;
+  };
+
+  const onEnd = () => { isDragging = false; };
+
+  el.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+}
+
+function makeMaskResizable(el, edit, displayScale, handle) {
+  let isResizing = false;
+  let startX, startY, startW, startH;
+
+  handle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startW = parseFloat(el.style.width);
+    startH = parseFloat(el.style.height);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const newW = Math.max(20, startW + (e.clientX - startX));
+    const newH = Math.max(20, startH + (e.clientY - startY));
+    el.style.width = newW + 'px';
+    el.style.height = newH + 'px';
+    edit.width = newW / displayScale;
+    edit.height = newH / displayScale;
+  });
+
+  document.addEventListener('mouseup', () => { isResizing = false; });
+}
+
+// ══════════════════════════════════════════════
+//  REMOVE EDIT
+// ══════════════════════════════════════════════
+function removeEdit(edit, pageNum, el) {
+  el.remove();
+  const edits = state.edits[pageNum];
+  if (edits) {
+    const idx = edits.indexOf(edit);
+    if (idx > -1) edits.splice(idx, 1);
+  }
+  const domEls = state.domElements[pageNum];
+  if (domEls) {
+    const idx = domEls.indexOf(el);
+    if (idx > -1) domEls.splice(idx, 1);
+  }
+}
+
+// ══════════════════════════════════════════════
+//  UNDO
+// ══════════════════════════════════════════════
+function undo() {
+  if (state.history.length === 0) { showToast('Nothing to undo'); return; }
+  const last = state.history.pop();
+  const pageEdits = state.edits[last.page];
+  if (pageEdits) {
+    const idx = pageEdits.lastIndexOf(last.edit);
+    if (idx > -1) {
+      pageEdits.splice(idx, 1);
+      // Remove DOM element if on current page
+      if (last.page === state.currentPage) {
+        const domEls = state.domElements[last.page] || [];
+        // Find and remove the last added element (matches edit)
+        // We re-render to be safe
+        rerenderCurrentPage();
+      }
+    }
+  }
+}
+
+async function rerenderCurrentPage() {
+  // Remove all overlay elements and re-add from state
+  document.querySelectorAll('.mask-element, .text-overlay').forEach(el => el.remove());
+  state.domElements[state.currentPage] = [];
+  const edits = state.edits[state.currentPage] || [];
+  const canvas = document.getElementById('draw-canvas');
+  const displayScale = canvas.getBoundingClientRect().width / canvas.width;
+  edits.forEach(edit => renderEditElement(edit, state.currentPage));
+}
+
+// ══════════════════════════════════════════════
+//  SAVE PDF
+// ══════════════════════════════════════════════
+async function savePDF() {
+  if (!state.pdfLoaded) return;
+
+  // Sync all text content from DOM
+  document.querySelectorAll('.text-overlay').forEach((el) => {
+    // text is already synced via input events
+  });
+
+  showLoading('Saving PDF...');
+
+  const payload = {
+    edits: state.edits,
+    render_info: state.renderInfo
+  };
+
+  try {
+    const res = await fetch('/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error, 'error');
+      console.error(data.traceback);
+      hideLoading();
+      return;
+    }
+
+    // Trigger download
+    const a = document.createElement('a');
+    a.href = '/download/' + encodeURIComponent(data.filename);
+    a.download = data.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    hideLoading();
+    showToast('PDF saved and downloading!', 'success');
+  } catch(err) {
+    showToast('Save failed: ' + err.message, 'error');
+    hideLoading();
+  }
+}
+
+// ══════════════════════════════════════════════
+//  UI HELPERS
+// ══════════════════════════════════════════════
+function showLoading(msg = 'Processing...') {
+  document.getElementById('loading-msg').textContent = msg;
+  document.getElementById('loading').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+let toastTimer;
+function showToast(msg, type = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', 3000);
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); undo(); }
+  if (e.key === 'Escape') setTool('select');
+  if (e.key === 'm') setTool('mask');
+  if (e.key === 't') setTool('text');
+});
+
+// Resize handler - re-position elements on window resize
+window.addEventListener('resize', () => {
+  if (state.pdfLoaded) rerenderCurrentPage();
+});
+
+// Initialize
+setTool('select');
+</script>
+</body>
+</html>
