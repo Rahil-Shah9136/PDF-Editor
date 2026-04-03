@@ -437,6 +437,15 @@
     <input type="color" id="text-color-input" value="#000000">
   </div>
 
+ <div class="divider"></div>
+
+  <button class="tool-btn" id="btn-scan" title="Apply B&W scan effect to whole PDF" onclick="applyScan()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <path d="M3 9h18M9 21V9"/>
+    </svg>
+    B&W Scan
+  </button>
   <div class="divider"></div>
 
   <button class="tool-btn" id="undo-btn" title="Undo last action (Ctrl+Z)" onclick="undo()">
@@ -950,6 +959,42 @@ async function rerenderCurrentPage() {
   edits.forEach(edit => renderEditElement(edit, state.currentPage));
 }
 
+ async function applyScan() {
+  if (!state.pdfLoaded) { showToast('Please open a PDF first', 'error'); return; }
+  if (!confirm('Apply B&W scan effect to the entire PDF?\nThis will download a new scanned copy.')) return;
+
+  showLoading('Applying B&W scan effect... please wait');
+
+  try {
+    const res = await fetch('/apply_scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      showToast(data.error, 'error');
+      console.error(data.traceback);
+      hideLoading();
+      return;
+    }
+
+    const a = document.createElement('a');
+    a.href = '/download/' + encodeURIComponent(data.filename);
+    a.download = data.filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    hideLoading();
+    showToast('B&W scan applied — downloading!', 'success');
+
+  } catch(err) {
+    showToast('Scan failed: ' + err.message, 'error');
+    hideLoading();
+  }
+}
 // ══════════════════════════════════════════════
 //  SAVE PDF
 // ══════════════════════════════════════════════
