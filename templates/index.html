@@ -49,8 +49,9 @@
   #draw-canvas { position: absolute; top: 0; left: 0; }
 
   /* Text overlay */
-  .text-overlay { position: absolute; cursor: move; user-select: none; white-space: pre; border: 1px dashed transparent; padding: 2px 4px; border-radius: 2px; min-width: 20px; line-height: 1.2; }
-  .text-overlay:hover { border-color: rgba(124,155,181,0.5); }
+.text-overlay { position: absolute; cursor: move; user-select: none; white-space: pre; border: 1px dashed transparent; padding: 2px 4px; border-radius: 2px; min-width: 20px; line-height: 1.2; outline: none; }
+.text-overlay.editing { cursor: text; user-select: text; border-color: #4a9e6e !important; }
+ .text-overlay:hover { border-color: rgba(124,155,181,0.5); }
   .text-overlay.selected { border-color: var(--accent2); }
 
   /* Floating text toolbar */
@@ -377,13 +378,18 @@ function renderEditElement(edit, pageNum) {
     el.style.zIndex=20;
 
     // Click to select
+    // Single click = select, Double click = edit/type
     el.addEventListener('mousedown', ev => {
       if(state.tool==='select'||state.tool==='text') {
         ev.stopPropagation();
         selectText(el, edit);
       }
     });
-
+    el.addEventListener('dblclick', ev => {
+      ev.stopPropagation();
+      selectText(el, edit);
+      startEditing(el, edit);
+    });
     makeDraggable(el, edit, ds);
     wrapper.appendChild(el);
     if(!state.domElements[pageNum]) state.domElements[pageNum]=[];
@@ -395,36 +401,63 @@ function renderEditElement(edit, pageNum) {
 
 // ══════ TEXT SELECTION & FLOATING TOOLBAR ══════
 function selectText(el, edit) {
-  // Deselect previous
-  if(selectedTextEl && selectedTextEl!==el) selectedTextEl.classList.remove('selected');
-
+  if(selectedTextEl && selectedTextEl!==el) {
+    selectedTextEl.classList.remove('selected');
+    stopEditing(selectedTextEl);
+  }
   selectedTextEl=el; selectedTextEdit=edit;
   el.classList.add('selected');
 
-  // Show floating toolbar above the element
   const toolbar=document.getElementById('text-toolbar');
   const wrapperRect=document.getElementById('canvas-wrapper').getBoundingClientRect();
   const elRect=el.getBoundingClientRect();
-
-  // Position toolbar above the text element
-  const topPos=elRect.top - wrapperRect.top - 48;
-  const leftPos=elRect.left - wrapperRect.left;
-
-  toolbar.style.top=Math.max(4, topPos)+'px';
-  toolbar.style.left=Math.max(4, leftPos)+'px';
+  toolbar.style.top=Math.max(4, elRect.top - wrapperRect.top - 48)+'px';
+  toolbar.style.left=Math.max(4, elRect.left - wrapperRect.left)+'px';
   toolbar.style.position='absolute';
   document.getElementById('canvas-wrapper').appendChild(toolbar);
-
-  // Sync toolbar state to current text
   document.getElementById('tb-size').value=edit.fontSize||16;
   document.getElementById('tb-color').value=edit.color||'#000000';
   document.getElementById('tb-bold').classList.toggle('active', !!edit.bold);
-
   toolbar.classList.add('visible');
 }
 
+function startEditing(el, edit) {
+  el.contentEditable = 'true';
+  el.classList.add('editing');
+  el.style.cursor = 'text';
+  el.style.userSelect = 'text';
+
+  // Select all text so user can immediately type to replace "Type here"
+  const range = document.createRange();
+  range.selectNodeContents(el);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+
+  el.focus();
+
+  el.oninput = () => {
+    // Strip out the delete button text if it crept into content
+    edit.text = el.innerText.replace('✕ Delete','').trim() || '';
+  };
+}
+
+function stopEditing(el) {
+  if(!el) return;
+  el.contentEditable = 'false';
+  el.classList.remove('editing');
+  el.style.cursor = 'move';
+  el.style.userSelect = 'none';
+  if(selectedTextEdit) {
+    selectedTextEdit.text = el.innerText.replace('✕ Delete','').trim() || '';
+  }
+}
+
 function deselectText() {
-  if(selectedTextEl) selectedTextEl.classList.remove('selected');
+  if(selectedTextEl) {
+    stopEditing(selectedTextEl);
+    selectedTextEl.classList.remove('selected');
+  }
   selectedTextEl=null; selectedTextEdit=null;
   document.getElementById('text-toolbar').classList.remove('visible');
 }
