@@ -7,6 +7,8 @@ import os
 import json
 import base64
 import io
+import numpy as np
+from PIL import Image, ImageFilter, ImageEnhance
 from flask import Flask, render_template, request, jsonify, send_file
 
 app = Flask(__name__)
@@ -208,6 +210,67 @@ def download(filename):
     return send_file(filepath, as_attachment=True)
 
 
+@app.route('/apply_scan', methods=['POST'])
+def apply_scan():
+    """Apply B&W photocopier scan effect to entire PDF."""
+    global current_pdf_path
+    if not current_pdf_path or not os.path.exists(current_pdf_path):
+        return jsonify({'error': 'No PDF loaded'}), 400
+
+    try:
+        import fitz
+
+        doc = fitz.open(current_pdf_path)
+        output_doc = fitz.open()
+
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+
+            # Render at high quality
+            zoom = 2.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = page.get_pixmap(matrix=mat, alpha=False)
+
+            # Convert to PIL Image
+            img = Image.open(io.BytesIO(pix.tobytes("png")))
+
+            # Apply B&W scan effect
+            img = img.convert('L')                              # grayscale
+            img = ImageEnhance.Contrast(img).enhance(1.5)      # boost contrast
+            img = img.filter(ImageFilter.SHARPEN)               # sharpen edges
+            img = img.filter(ImageFilter.GaussianBlur(0.3))    # soften slightly
+
+            # Add subtle noise (real scanners aren't perfect)
+            arr = np.array(img, dtype=np.int16)
+            noise = np.random.normal(0, 3, arr.shape).astype(np.int16)
+            arr = np.clip(arr + noise, 0, 255).astype(np.uint8)
+            img = Image.fromarray(arr).convert('RGB')
+
+            # Insert processed image as new PDF page
+            page_rect = page.rect
+            new_page = output_doc.new_page(
+                width=page_rect.width,
+                height=page_rect.height
+            )
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            new_page.insert_image(page_rect, stream=buf.read())
+
+        doc.close()
+
+        # Save output file
+        name_no_ext = os.path.splitext(os.path.basename(current_pdf_path))[0]
+        output_filename = f"{name_no_ext}_scanned.pdf"
+        output_path = os.path.join(OUTPUT_FOLDER, output_filename)
+        output_doc.save(output_path, garbage=4, deflate=True)
+        output_doc.close()
+
+        return jsonify({'success': True, 'filename': output_filename})
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 def hex_to_rgb(hex_color):
     """Convert #RRGGBB to (r, g, b) in 0.0-1.0 range."""
     hex_color = hex_color.lstrip('#')
